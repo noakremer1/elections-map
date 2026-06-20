@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>בחירות לכנסת 25 - שכונות ויישובים לפי GovMap</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    html, body { height: 100%; margin: 0; font-family: Arial, sans-serif; }
+    #map { height: 100%; width: 100%; background: #eef1ed; }
+    .panel {
+      position: absolute; z-index: 1000; top: 14px; right: 14px; width: min(370px, calc(100vw - 28px));
+      background: rgba(255,255,255,.94); border: 1px solid #d8d8d8; border-radius: 6px;
+      box-shadow: 0 8px 28px rgba(0,0,0,.16); padding: 14px; box-sizing: border-box;
+    }
+    .title { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+    .meta { color: #555; font-size: 13px; margin-bottom: 12px; }
+    .bars { display: grid; gap: 7px; }
+    .bar-row { display: grid; grid-template-columns: 52px 92px 1fr; align-items: center; gap: 8px; font-size: 14px; }
+    .track { height: 8px; background: #eee9df; border: 1px solid #d8d0c2; direction: ltr; }
+    .bar { display: block; height: 100%; }
+    .leaflet-tooltip { direction: rtl; text-align: right; }
+    .leaflet-control-attribution { direction: ltr; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <aside class="panel">
+    <div id="title" class="title">טוען מפה...</div>
+    <div id="meta" class="meta">מיד תוצג התפלגות ההצבעה.</div>
+    <div id="bars" class="bars"></div>
+  </aside>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const PARTIES = [{"key":"r_אמת","name":"העבודה","letter":"אמת"},{"key":"r_אצ","name":"אצ","letter":"אצ"},{"key":"r_ב","name":"הבית היהודי","letter":"ב"},{"key":"r_ג","name":"יהדות התורה","letter":"ג"},{"key":"r_ד","name":"בלד","letter":"ד"},{"key":"r_ום","name":"חדש-תעל","letter":"ום"},{"key":"r_ז","name":"ז","letter":"ז"},{"key":"r_זך","name":"זך","letter":"זך"},{"key":"r_זנ","name":"זנ","letter":"זנ"},{"key":"r_זץ","name":"זץ","letter":"זץ"},{"key":"r_ט","name":"הציונות הדתית","letter":"ט"},{"key":"r_י","name":"י","letter":"י"},{"key":"r_יז","name":"יז","letter":"יז"},{"key":"r_ינ","name":"ינ","letter":"ינ"},{"key":"r_יץ","name":"יץ","letter":"יץ"},{"key":"r_יק","name":"יק","letter":"יק"},{"key":"r_כן","name":"המחנה הממלכתי","letter":"כן"},{"key":"r_ך","name":"ך","letter":"ך"},{"key":"r_ל","name":"ישראל ביתנו","letter":"ל"},{"key":"r_מחל","name":"הליכוד","letter":"מחל"},{"key":"r_מרצ","name":"מרצ","letter":"מרצ"},{"key":"r_נז","name":"נז","letter":"נז"},{"key":"r_ני","name":"ני","letter":"ני"},{"key":"r_נף","name":"נף","letter":"נף"},{"key":"r_נץ","name":"נץ","letter":"נץ"},{"key":"r_נק","name":"נק","letter":"נק"},{"key":"r_נר","name":"נר","letter":"נר"},{"key":"r_עם","name":"רעם","letter":"עם"},{"key":"r_פה","name":"יש עתיד","letter":"פה"},{"key":"r_ף","name":"ף","letter":"ף"},{"key":"r_צ","name":"צ","letter":"צ"},{"key":"r_ץ","name":"ץ","letter":"ץ"},{"key":"r_ק","name":"ק","letter":"ק"},{"key":"r_קי","name":"קי","letter":"קי"},{"key":"r_קך","name":"קך","letter":"קך"},{"key":"r_קנ","name":"קנ","letter":"קנ"},{"key":"r_קץ","name":"קץ","letter":"קץ"},{"key":"r_רז","name":"רז","letter":"רז"},{"key":"r_שס","name":"שס","letter":"שס"},{"key":"r_ת","name":"ת","letter":"ת"}];
+    const COLORS = {"r_אמת":"#FC6B60","r_ב":"#8E6C55","r_ג":"#7487A6","r_ד":"#7C3AED","r_ום":"#C026D3","r_ט":"#B79A79","r_כן":"#6B7CFF","r_ל":"#96A7C8","r_מחל":"#1C5BAD","r_מרצ":"#EF4C9A","r_עם":"#1F9A66","r_פה":"#FF9B4A","r_שס":"#7A8CA5"};
+    const map = L.map('map', { preferCanvas: true }).setView([31.9, 34.9], 8);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors; boundaries: GovMap / Survey of Israel'
+    }).addTo(map);
+
+    function renderPanel(props) {
+      const unit = props.unit_type === 'שכונה' ? props.neighborhood : props.city;
+      document.getElementById('title').textContent = props.unit_type === 'שכונה' ? `${unit} - ${props.city}` : props.city;
+      document.getElementById('meta').innerHTML = `מובילה: <b>${props.top_party}</b> ${Number(props.top_party_percent).toFixed(1)}%`;
+      const max = Math.max(...PARTIES.map(p => Number(props[p.key] || 0)), 1);
+      document.getElementById('bars').innerHTML = PARTIES
+        .map(p => [p, Number(props[p.key] || 0)])
+        .filter(([, value]) => value > 0)
+        .sort((a, b) => b[1] - a[1])
+        .map(([p, value]) => `<div class="bar-row"><b>${value.toFixed(1)}%</b><span>${p.name}</span><span class="track"><span class="bar" style="width:${(value / max * 100).toFixed(1)}%; background:${COLORS[p.key] || '#777'}"></span></span></div>`)
+        .join('');
+    }
+
+    function styleFeature(feature) {
+      const key = `r_${feature.properties.top_party_key}`;
+      const point = feature.geometry.type === 'Point';
+      return {
+        color: point ? '#222' : '#202020',
+        weight: point ? 1 : 1.1,
+        fillColor: COLORS[key] || '#999',
+        fillOpacity: point ? 0.86 : 0.58,
+        opacity: 0.9,
+        radius: 6
+      };
+    }
+
+    fetch('govmap_election_features.geojson')
+      .then(response => {
+        if (!response.ok) throw new Error('לא נמצא קובץ הנתונים');
+        return response.json();
+      })
+      .then(DATA => {
+        const layer = L.geoJSON(DATA, {
+          pointToLayer(feature, latlng) {
+            return L.circleMarker(latlng, styleFeature(feature));
+          },
+          style: styleFeature,
+          onEachFeature(feature, shape) {
+            const props = feature.properties;
+            const tooltipTitle = props.unit_type === 'שכונה' ? `<b>${props.neighborhood}</b><br>${props.city}` : `<b>${props.city}</b>`;
+            shape.bindTooltip(`${tooltipTitle}<br>${props.top_party} ${Number(props.top_party_percent).toFixed(1)}%`);
+            shape.on('mouseover', () => {
+              shape.setStyle({ weight: 3, fillOpacity: .82, radius: 9 });
+              if (shape.bringToFront) shape.bringToFront();
+              renderPanel(props);
+            });
+            shape.on('mouseout', () => shape.setStyle(styleFeature(feature)));
+          }
+        }).addTo(map);
+        if (DATA.features.length) {
+          map.fitBounds(layer.getBounds(), { padding: [24, 24] });
+          renderPanel(DATA.features[0].properties);
+        }
+      })
+      .catch(error => {
+        document.getElementById('title').textContent = 'הנתונים לא נטענו';
+        document.getElementById('meta').textContent = error.message;
+      });
+  </script>
+</body>
+</html>
